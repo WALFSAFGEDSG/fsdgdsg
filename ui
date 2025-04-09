@@ -1,0 +1,787 @@
+--[[
+    SmoothUI Library for Roblox
+    A sleek, modern UI library compatible with various executors.
+    Features: Buttons, Sliders, Toggles, Dropdown Menus
+]]
+
+local SmoothUI = {}
+SmoothUI.__index = SmoothUI
+
+-- Library Settings
+SmoothUI.Settings = {
+    MainColor = Color3.fromRGB(48, 189, 248),   -- Bright blue
+    BackgroundColor = Color3.fromRGB(15, 23, 42), -- Dark blue background
+    AccentColor = Color3.fromRGB(14, 165, 233),  -- Accent blue
+    TextColor = Color3.fromRGB(226, 232, 240),   -- Light gray text
+    Font = Enum.Font.Gotham,
+    ToggleSpeed = 0.15,
+    SliderSpeed = 0.1,
+    DropdownSpeed = 0.2,
+    CornerRadius = UDim.new(0, 6),
+    ElementHeight = 36,
+    WindowPadding = 12,
+    ElementSpacing = 8
+}
+
+-- Initialize main UI components
+function SmoothUI.new(title, position)
+    -- Ensure we're in a proper environment
+    local success, errorMessage = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    
+    local parent
+    if success then
+        parent = game:GetService("CoreGui")
+    else
+        parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    end
+    
+    -- Create main UI container
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "SmoothUI_" .. title:gsub(" ", "_")
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    -- Setup protection for the GUI if executor supports it
+    pcall(function()
+        syn.protect_gui(ScreenGui)
+    end)
+    
+    pcall(function()
+        ScreenGui.Parent = parent
+    end)
+    
+    -- Create main frame
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 300, 0, 350)
+    MainFrame.Position = position or UDim2.new(0.5, -150, 0.5, -175)
+    MainFrame.BackgroundColor3 = SmoothUI.Settings.BackgroundColor
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    MainFrame.Parent = ScreenGui
+    
+    -- Add corner radius
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = SmoothUI.Settings.CornerRadius
+    Corner.Parent = MainFrame
+    
+    -- Title bar
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Name = "TitleBar"
+    TitleBar.Size = UDim2.new(1, 0, 0, 36)
+    TitleBar.BackgroundColor3 = SmoothUI.Settings.MainColor
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = MainFrame
+    
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = SmoothUI.Settings.CornerRadius
+    TitleCorner.Parent = TitleBar
+    
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Name = "Title"
+    TitleLabel.Size = UDim2.new(1, -36, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 12, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = title
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.Font = SmoothUI.Settings.Font
+    TitleLabel.TextSize = 16
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = TitleBar
+    
+    -- Close button
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0, 24, 0, 24)
+    CloseButton.Position = UDim2.new(1, -30, 0, 6)
+    CloseButton.BackgroundColor3 = Color3.fromRGB(225, 50, 50)
+    CloseButton.Text = "✕"
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.Font = SmoothUI.Settings.Font
+    CloseButton.TextSize = 14
+    CloseButton.Parent = TitleBar
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(1, 0)
+    CloseCorner.Parent = CloseButton
+    
+    CloseButton.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+    end)
+    
+    -- Content container
+    local ContentFrame = Instance.new("ScrollingFrame")
+    ContentFrame.Name = "ContentFrame"
+    ContentFrame.Size = UDim2.new(1, -24, 1, -48)
+    ContentFrame.Position = UDim2.new(0, 12, 0, 42)
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.BorderSizePixel = 0
+    ContentFrame.ScrollBarThickness = 4
+    ContentFrame.ScrollBarImageColor3 = SmoothUI.Settings.MainColor
+    ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Will be updated as elements are added
+    ContentFrame.Parent = MainFrame
+    
+    -- Auto-layout for the content
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, SmoothUI.Settings.ElementSpacing)
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.Parent = ContentFrame
+    
+    -- Auto-size canvas
+    UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y)
+    end)
+    
+    -- Create new UI object
+    local ui = setmetatable({
+        ScreenGui = ScreenGui,
+        MainFrame = MainFrame,
+        ContentFrame = ContentFrame,
+        UIListLayout = UIListLayout,
+        ElementOrder = 0
+    }, SmoothUI)
+    
+    return ui
+end
+
+-- Add a section to group elements
+function SmoothUI:AddSection(title)
+    self.ElementOrder = self.ElementOrder + 1
+    
+    local SectionFrame = Instance.new("Frame")
+    SectionFrame.Name = "Section_" .. title:gsub(" ", "_")
+    SectionFrame.Size = UDim2.new(1, 0, 0, 30)
+    SectionFrame.BackgroundTransparency = 1
+    SectionFrame.LayoutOrder = self.ElementOrder
+    SectionFrame.Parent = self.ContentFrame
+    
+    local SectionTitle = Instance.new("TextLabel")
+    SectionTitle.Name = "Title"
+    SectionTitle.Size = UDim2.new(1, 0, 1, 0)
+    SectionTitle.BackgroundTransparency = 1
+    SectionTitle.Text = title
+    SectionTitle.TextColor3 = SmoothUI.Settings.MainColor
+    SectionTitle.Font = SmoothUI.Settings.Font
+    SectionTitle.TextSize =
+ 16
+    SectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+    SectionTitle.Parent = SectionFrame
+    
+    return SectionFrame
+end
+
+-- Add a button
+function SmoothUI:AddButton(text, callback)
+    self.ElementOrder = self.ElementOrder + 1
+    
+    local Button = Instance.new("Frame")
+    Button.Name = "Button_" .. text:gsub(" ", "_")
+    Button.Size = UDim2.new(1, 0, 0, SmoothUI.Settings.ElementHeight)
+    Button.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.05)
+    Button.BorderSizePixel = 0
+    Button.LayoutOrder = self.ElementOrder
+    Button.Parent = self.ContentFrame
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = SmoothUI.Settings.CornerRadius
+    ButtonCorner.Parent = Button
+    
+    local ButtonLabel = Instance.new("TextLabel")
+    ButtonLabel.Name = "Label"
+    ButtonLabel.Size = UDim2.new(1, -20, 1, 0)
+    ButtonLabel.Position = UDim2.new(0, 10, 0, 0)
+    ButtonLabel.BackgroundTransparency = 1
+    ButtonLabel.Text = text
+    ButtonLabel.TextColor3 = SmoothUI.Settings.TextColor
+    ButtonLabel.Font = SmoothUI.Settings.Font
+    ButtonLabel.TextSize = 14
+    ButtonLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ButtonLabel.Parent = Button
+    
+    local ButtonClickRegion = Instance.new("TextButton")
+    ButtonClickRegion.Name = "ClickRegion"
+    ButtonClickRegion.Size = UDim2.new(1, 0, 1, 0)
+    ButtonClickRegion.BackgroundTransparency = 1
+    ButtonClickRegion.Text = ""
+    ButtonClickRegion.Parent = Button
+    
+    -- Button effects
+    local buttonOriginalColor = Button.BackgroundColor3
+    
+    ButtonClickRegion.MouseEnter:Connect(function()
+        Button.BackgroundColor3 = buttonOriginalColor:Lerp(SmoothUI.Settings.MainColor, 0.2)
+    end)
+    
+    ButtonClickRegion.MouseLeave:Connect(function()
+        Button.BackgroundColor3 = buttonOriginalColor
+    end)
+    
+    ButtonClickRegion.MouseButton1Down:Connect(function()
+        Button.BackgroundColor3 = buttonOriginalColor:Lerp(SmoothUI.Settings.MainColor, 0.4)
+    end)
+    
+    ButtonClickRegion.MouseButton1Up:Connect(function()
+        Button.BackgroundColor3 = buttonOriginalColor:Lerp(SmoothUI.Settings.MainColor, 0.2)
+    end)
+    
+    ButtonClickRegion.MouseButton1Click:Connect(function()
+        callback()
+    end)
+    
+    return Button
+end
+
+-- Add a toggle
+function SmoothUI:AddToggle(text, default, callback)
+    self.ElementOrder = self.ElementOrder + 1
+    default = default or false
+    
+    local Toggle = Instance.new("Frame")
+    Toggle.Name = "Toggle_" .. text:gsub(" ", "_")
+    Toggle.Size = UDim2.new(1, 0, 0, SmoothUI.Settings.ElementHeight)
+    Toggle.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.05)
+    Toggle.BorderSizePixel = 0
+    Toggle.LayoutOrder = self.ElementOrder
+    Toggle.Parent = self.ContentFrame
+    
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = SmoothUI.Settings.CornerRadius
+    ToggleCorner.Parent = Toggle
+    
+    local ToggleLabel = Instance.new("TextLabel")
+    ToggleLabel.Name = "Label"
+    ToggleLabel.Size = UDim2.new(1, -60, 1, 0)
+    ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
+    ToggleLabel.BackgroundTransparency = 1
+    ToggleLabel.Text = text
+    ToggleLabel.TextColor3 = SmoothUI.Settings.TextColor
+    ToggleLabel.Font = SmoothUI.Settings.Font
+    ToggleLabel.TextSize = 14
+    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ToggleLabel.Parent = Toggle
+    
+    -- Toggle switch
+    local SwitchContainer = Instance.new("Frame")
+    SwitchContainer.Name = "SwitchContainer"
+    SwitchContainer.Size = UDim2.new(0, 40, 0, 20)
+    SwitchContainer.Position = UDim2.new(1, -50, 0.5, -10)
+    SwitchContainer.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SwitchContainer.BorderSizePixel = 0
+    SwitchContainer.Parent = Toggle
+    
+    local SwitchCorner = Instance.new("UICorner")
+    SwitchCorner.CornerRadius = UDim.new(1, 0)
+    SwitchCorner.Parent = SwitchContainer
+    
+    local SwitchButton = Instance.new("Frame")
+    SwitchButton.Name = "SwitchButton"
+    SwitchButton.Size = UDim2.new(0, 16, 0, 16)
+    SwitchButton.Position = UDim2.new(0, 2, 0.5, -8)
+    SwitchButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    SwitchButton.BorderSizePixel = 0
+    SwitchButton.Parent = SwitchContainer
+    
+    local SwitchButtonCorner = Instance.new("UICorner")
+    SwitchButtonCorner.CornerRadius = UDim.new(1, 0)
+    SwitchButtonCorner.Parent = SwitchButton
+    
+    local ToggleClickRegion = Instance.new("TextButton")
+    ToggleClickRegion.Name = "ClickRegion"
+    ToggleClickRegion.Size = UDim2.new(1, 0, 1, 0)
+    ToggleClickRegion.BackgroundTransparency = 1
+    ToggleClickRegion.Text = ""
+    ToggleClickRegion.Parent = Toggle
+    
+    -- Toggle state
+    local isToggled = default
+    
+    local function updateToggleVisual()
+        if isToggled then
+            SwitchContainer.BackgroundColor3 = SmoothUI.Settings.MainColor
+            game:GetService("TweenService"):Create(
+                SwitchButton, 
+                TweenInfo.new(SmoothUI.Settings.ToggleSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {Position = UDim2.new(0, 22, 0.5, -8)}
+            ):Play()
+        else
+            SwitchContainer.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            game:GetService("TweenService"):Create(
+                SwitchButton, 
+                TweenInfo.new(SmoothUI.Settings.ToggleSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {Position = UDim2.new(0, 2, 0.5, -8)}
+            ):Play()
+        end
+    end
+    
+    -- Initialize toggle state
+    updateToggleVisual()
+    
+    ToggleClickRegion.MouseButton1Click:Connect(function()
+        isToggled = not isToggled
+        updateToggleVisual()
+        callback(isToggled)
+    end)
+    
+    -- Return toggle with API
+    return {
+        Instance = Toggle,
+        SetValue = function(value)
+            isToggled = value
+            updateToggleVisual()
+            callback(isToggled)
+        end,
+        GetValue = function()
+            return isToggled
+        end
+    }
+end
+
+-- Add a slider
+function SmoothUI:AddSlider(text, min, max, default, callback)
+    self.ElementOrder = self.ElementOrder + 1
+    min = min or 0
+    max = max or 100
+    default = default or min
+    
+    local Slider = Instance.new("Frame")
+    Slider.Name = "Slider_" .. text:gsub(" ", "_")
+    Slider.Size = UDim2.new(1, 0, 0, SmoothUI.Settings.ElementHeight + 15)
+    Slider.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.05)
+    Slider.BorderSizePixel = 0
+    Slider.LayoutOrder = self.ElementOrder
+    Slider.Parent = self.ContentFrame
+    
+    local SliderCorner = Instance.new("UICorner")
+    SliderCorner.CornerRadius = SmoothUI.Settings.CornerRadius
+    SliderCorner.Parent = Slider
+    
+    local SliderLabel = Instance.new("TextLabel")
+    SliderLabel.Name = "Label"
+    SliderLabel.Size = UDim2.new(1, -110, 0, SmoothUI.Settings.ElementHeight)
+    SliderLabel.Position = UDim2.new(0, 10, 0, 0)
+    SliderLabel.BackgroundTransparency = 1
+    SliderLabel.Text = text
+    SliderLabel.TextColor3 = SmoothUI.Settings.TextColor
+    SliderLabel.Font = SmoothUI.Settings.Font
+    SliderLabel.TextSize = 14
+    SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SliderLabel.Parent = Slider
+    
+    -- Value display
+    local ValueLabel = Instance.new("TextLabel")
+    ValueLabel.Name = "Value"
+    ValueLabel.Size = UDim2.new(0, 50, 0, SmoothUI.Settings.ElementHeight)
+    ValueLabel.Position = UDim2.new(1, -60, 0, 0)
+    ValueLabel.BackgroundTransparency = 1
+    ValueLabel.Text = tostring(default)
+    ValueLabel.TextColor3 = SmoothUI.Settings.TextColor
+    ValueLabel.Font = SmoothUI.Settings.Font
+    ValueLabel.TextSize = 14
+    ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    ValueLabel.Parent = Slider
+    
+    -- Slider track
+    local SliderTrack = Instance.new("Frame")
+    SliderTrack.Name = "Track"
+    SliderTrack.Size = UDim2.new(1, -20, 0, 6)
+    SliderTrack.Position = UDim2.new(0, 10, 0, SmoothUI.Settings.ElementHeight + 2)
+    SliderTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SliderTrack.BorderSizePixel = 0
+    SliderTrack.Parent = Slider
+    
+    local TrackCorner = Instance.new("UICorner")
+    TrackCorner.CornerRadius = UDim.new(1, 0)
+    TrackCorner.Parent = SliderTrack
+    
+    -- Slider fill
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Name = "Fill"
+    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    SliderFill.BackgroundColor3 = SmoothUI.Settings.MainColor
+    SliderFill.BorderSizePixel = 0
+    SliderFill.Parent = SliderTrack
+    
+    local FillCorner = Instance.new("UICorner")
+    FillCorner.CornerRadius = UDim.new(1, 0)
+    FillCorner.Parent = SliderFill
+    
+    -- Slider knob
+    local SliderKnob = Instance.new("Frame")
+    SliderKnob.Name = "Knob"
+    SliderKnob.Size = UDim2.new(0, 14, 0, 14)
+    SliderKnob.Position = UDim2.new((default - min) / (max - min), 0, 0.5, -7)
+    SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    SliderKnob.BorderSizePixel = 0
+    SliderKnob.Parent = SliderTrack
+    
+    local KnobCorner = Instance.new("UICorner")
+    KnobCorner.CornerRadius = UDim.new(1, 0)
+    KnobCorner.Parent = SliderKnob
+    
+    -- Slider interaction
+    local isDragging = false
+    local currentValue = default
+    
+    local function updateSlider(value)
+        value = math.clamp(value, min, max)
+        currentValue = value
+        
+        -- Update UI
+        local percent = (value - min) / (max - min)
+        SliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        SliderKnob.Position = UDim2.new(percent, 0, 0.5, -7)
+        ValueLabel.Text = tostring(math.floor(value * 10) / 10)
+        
+        callback(value)
+    end
+    
+    SliderTrack.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            
+            -- Get mouse position relative to track
+            local relativeX = math.clamp(input.Position.X - SliderTrack.AbsolutePosition.X, 0, SliderTrack.AbsoluteSize.X)
+            local percent = relativeX / SliderTrack.AbsoluteSize.X
+            local value = min + (max - min) * percent
+            
+            updateSlider(value)
+        end
+    end)
+    
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            -- Get mouse position relative to track
+            local relativeX = math.clamp(input.Position.X - SliderTrack.AbsolutePosition.X, 0, SliderTrack.AbsoluteSize.X)
+            local percent = relativeX / SliderTrack.AbsoluteSize.X
+            local value = min + (max - min) * percent
+            
+            updateSlider(value)
+        end
+    end)
+    
+    game:GetService("UserInputService").InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = false
+        end
+    end)
+    
+    -- Initialize slider value
+    updateSlider(default)
+    
+    -- Return slider with API
+    return {
+        Instance = Slider,
+        SetValue = function(value)
+            updateSlider(value)
+        end,
+        GetValue = function()
+            return currentValue
+        end
+    }
+end
+
+-- Add a dropdown menu
+function SmoothUI:AddDropdown(text, options, default, callback)
+    self.ElementOrder = self.ElementOrder + 1
+    options = options or {}
+    default = default or options[1] or ""
+    
+    local DropdownClosed = Instance.new("Frame")
+    DropdownClosed.Name = "Dropdown_" .. text:gsub(" ", "_") .. "_Closed"
+    DropdownClosed.Size = UDim2.new(1, 0, 0, SmoothUI.Settings.ElementHeight)
+    DropdownClosed.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.05)
+    DropdownClosed.BorderSizePixel = 0
+    DropdownClosed.LayoutOrder = self.ElementOrder
+    DropdownClosed.Parent = self.ContentFrame
+    
+    local DropdownCorner = Instance.new("UICorner")
+    DropdownCorner.CornerRadius = SmoothUI.Settings.CornerRadius
+    DropdownCorner.Parent = DropdownClosed
+    
+    local DropdownLabel = Instance.new("TextLabel")
+    DropdownLabel.Name = "Label"
+    DropdownLabel.Size = UDim2.new(0.5, -10, 1, 0)
+    DropdownLabel.Position = UDim2.new(0, 10, 0, 0)
+    DropdownLabel.BackgroundTransparency = 1
+    DropdownLabel.Text = text
+    DropdownLabel.TextColor3 = SmoothUI.Settings.TextColor
+    DropdownLabel.Font = SmoothUI.Settings.Font
+    DropdownLabel.TextSize = 14
+    DropdownLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DropdownLabel.Parent = DropdownClosed
+    
+    local SelectedLabel = Instance.new("TextLabel")
+    SelectedLabel.Name = "Selected"
+    SelectedLabel.Size = UDim2.new(0.5, -30, 1, 0)
+    SelectedLabel.Position = UDim2.new(0.5, 0, 0, 0)
+    SelectedLabel.BackgroundTransparency = 1
+    SelectedLabel.Text = default
+    SelectedLabel.TextColor3 = SmoothUI.Settings.TextColor
+    SelectedLabel.Font = SmoothUI.Settings.Font
+    SelectedLabel.TextSize = 14
+    SelectedLabel.TextXAlignment = Enum.TextXAlignment.Right
+    SelectedLabel.Parent = DropdownClosed
+    
+    local ArrowLabel = Instance.new("TextLabel")
+    ArrowLabel.Name = "Arrow"
+    ArrowLabel.Size = UDim2.new(0, 20, 0, 20)
+    ArrowLabel.Position = UDim2.new(1, -30, 0.5, -10)
+    ArrowLabel.BackgroundTransparency = 1
+    ArrowLabel.Text = "▼"
+    ArrowLabel.TextColor3 = SmoothUI.Settings.MainColor
+    ArrowLabel.Font = Enum.Font.SourceSans
+    ArrowLabel.TextSize = 14
+    ArrowLabel.Parent = DropdownClosed
+    
+    local DropdownClickRegion = Instance.new("TextButton")
+    DropdownClickRegion.Name = "ClickRegion"
+    DropdownClickRegion.Size = UDim2.new(1, 0, 1, 0)
+    DropdownClickRegion.BackgroundTransparency = 1
+    DropdownClickRegion.Text = ""
+    DropdownClickRegion.Parent = DropdownClosed
+    
+    -- Dropdown container (hidden by default)
+    local DropdownContainer = Instance.new("Frame")
+    DropdownContainer.Name = "Container"
+    DropdownContainer.Size = UDim2.new(1, 0, 0, 0)
+    DropdownContainer.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.08)
+    DropdownContainer.BorderSizePixel = 0
+    DropdownContainer.ClipsDescendants = true
+    DropdownContainer.LayoutOrder = self.ElementOrder + 1
+    DropdownContainer.Visible = false
+    DropdownContainer.Parent = self.ContentFrame
+    
+    local ContainerCorner = Instance.new("UICorner")
+    ContainerCorner.CornerRadius = SmoothUI.Settings.CornerRadius
+    ContainerCorner.Parent = DropdownContainer
+    
+    local OptionsList = Instance.new("Frame")
+    OptionsList.Name = "OptionsList"
+    OptionsList.Size = UDim2.new(1, -20, 1, -10)
+    OptionsList.Position = UDim2.new(0, 10, 0, 5)
+    OptionsList.BackgroundTransparency = 1
+    OptionsList.Parent = DropdownContainer
+    
+    local OptionsLayout = Instance.new("UIListLayout")
+    OptionsLayout.Padding = UDim.new(0, 5)
+    OptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    OptionsLayout.Parent = OptionsList
+    
+    -- Populate with options
+    local selectedOption = default
+    local isOpen = false
+    local optionButtons = {}
+    
+    local function populateOptions()
+        -- Clear existing options
+        for _, child in pairs(OptionsList:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
+        
+        optionButtons = {}
+        
+        -- Create option buttons
+        for i, option in ipairs(options) do
+            local OptionButton = Instance.new("TextButton")
+            OptionButton.Name = "Option_" .. i
+            OptionButton.Size = UDim2.new(1, 0, 0, 24)
+            OptionButton.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.1)
+            OptionButton.BackgroundTransparency = 0.2
+            OptionButton.Text = option
+            OptionButton.TextColor3 = SmoothUI.Settings.TextColor
+            OptionButton.Font = SmoothUI.Settings.Font
+            OptionButton.TextSize = 14
+            OptionButton.BorderSizePixel = 0
+            OptionButton.Parent = OptionsList
+            
+            local OptionCorner = Instance.new("UICorner")
+            OptionCorner.CornerRadius = UDim.new(0, 4)
+            OptionCorner.Parent = OptionButton
+            
+            -- Highlight if selected
+            if option == selectedOption then
+                OptionButton.BackgroundColor3 = SmoothUI.Settings.MainColor:Lerp(Color3.new(1, 1, 1), 0.8)
+                OptionButton.TextColor3 = SmoothUI.Settings.BackgroundColor
+            end
+            
+            -- Option hover effect
+            OptionButton.MouseEnter:Connect(function()
+                if option ~= selectedOption then
+                    OptionButton.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.2)
+                end
+            end)
+            
+            OptionButton.MouseLeave:Connect(function()
+                if option ~= selectedOption then
+                    OptionButton.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.1)
+                end
+            end)
+            
+            -- Option click
+            OptionButton.MouseButton1Click:Connect(function()
+                selectedOption = option
+                SelectedLabel.Text = option
+                toggleDropdown()
+                callback(option)
+                
+                -- Update highlighting
+                for _, btn in pairs(optionButtons) do
+                    if btn.Text == option then
+                        btn.BackgroundColor3 = SmoothUI.Settings.MainColor:Lerp(Color3.new(1, 1, 1), 0.8)
+                        btn.TextColor3 = SmoothUI.Settings.BackgroundColor
+                    else
+                        btn.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.1)
+                        btn.TextColor3 = SmoothUI.Settings.TextColor
+                    end
+                end
+            end)
+            
+            table.insert(optionButtons, OptionButton)
+        end
+    end
+    
+    -- Toggle dropdown visibility
+    local function toggleDropdown()
+        isOpen = not isOpen
+        
+        if isOpen then
+            -- Adjust element order to keep the container right below the header
+            self.ElementOrder = self.ElementOrder + 1
+            
+            -- Calculate height based on options
+            local containerHeight = (#options * 29) -- 24 height + 5 padding
+            DropdownContainer.Visible = true
+            
+            -- Animate dropdown opening
+            game:GetService("TweenService"):Create(
+                DropdownContainer, 
+                TweenInfo.new(SmoothUI.Settings.DropdownSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {Size = UDim2.new(1, 0, 0, containerHeight)}
+            ):Play()
+            
+            -- Rotate arrow
+            game:GetService("TweenService"):Create(
+                ArrowLabel, 
+                TweenInfo.new(SmoothUI.Settings.DropdownSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {Rotation = 180}
+            ):Play()
+        else
+            -- Animate dropdown closing
+            game:GetService("TweenService"):Create(
+                DropdownContainer, 
+                TweenInfo.new(SmoothUI.Settings.DropdownSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {Size = UDim2.new(1, 0, 0, 0)}
+            ):Play()
+            
+            -- Rotate arrow back
+            game:GetService("TweenService"):Create(
+                ArrowLabel, 
+                TweenInfo.new(SmoothUI.Settings.DropdownSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {Rotation = 0}
+            ):Play()
+            
+            wait(SmoothUI.Settings.DropdownSpeed)
+            DropdownContainer.Visible = false
+        end
+    end
+    
+    -- Initialize dropdown
+    populateOptions()
+    
+    -- Dropdown click
+    DropdownClickRegion.MouseButton1Click:Connect(toggleDropdown)
+    
+    -- Return dropdown with API
+    return {
+        InstanceClosed = DropdownClosed,
+        InstanceContainer = DropdownContainer,
+        SetOptions = function(newOptions)
+            options = newOptions
+            populateOptions()
+            
+            -- Reset selected if not in options
+            local found = false
+            for _, option in ipairs(options) do
+                if option == selectedOption then
+                    found = true
+                    break
+                end
+            end
+            
+            if not found and #options > 0 then
+                selectedOption = options[1]
+                SelectedLabel.Text = selectedOption
+                callback(selectedOption)
+            end
+        end,
+        GetSelected = function()
+            return selectedOption
+        end,
+        SetSelected = function(option)
+            -- Check if option exists
+            local found = false
+            for _, opt in ipairs(options) do
+                if opt == option then
+                    found = true
+                    break
+                end
+            end
+            
+            if found then
+                selectedOption = option
+                SelectedLabel.Text = option
+                callback(option)
+                
+                -- Update highlighting
+                for _, btn in pairs(optionButtons) do
+                    if btn.Text == option then
+                        btn.BackgroundColor3 = SmoothUI.Settings.MainColor:Lerp(Color3.new(1, 1, 1), 0.8)
+                        btn.TextColor3 = SmoothUI.Settings.BackgroundColor
+                    else
+                        btn.BackgroundColor3 = SmoothUI.Settings.BackgroundColor:Lerp(Color3.new(1, 1, 1), 0.1)
+                        btn.TextColor3 = SmoothUI.Settings.TextColor
+                    end
+                end
+            end
+        end
+    }
+end
+
+-- Add a text label
+function SmoothUI:AddLabel(text)
+    self.ElementOrder = self.ElementOrder + 1
+    
+    local Label = Instance.new("Frame")
+    Label.Name = "Label_" .. text:gsub(" ", "_")
+    Label.Size = UDim2.new(1, 0, 0, SmoothUI.Settings.ElementHeight - 10)
+    Label.BackgroundTransparency = 1
+    Label.LayoutOrder = self.ElementOrder
+    Label.Parent = self.ContentFrame
+    
+    local TextLabel = Instance.new("TextLabel")
+    TextLabel.Name = "Text"
+    TextLabel.Size = UDim2.new(1, -20, 1, 0)
+    TextLabel.Position = UDim2.new(0, 10, 0, 0)
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Text = text
+    TextLabel.TextColor3 = SmoothUI.Settings.TextColor
+    TextLabel.Font = SmoothUI.Settings.Font
+    TextLabel.TextSize = 14
+    TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TextLabel.TextWrapped = true
+    TextLabel.Parent = Label
+    
+    return {
+        Instance = Label,
+        SetText = function(newText)
+            TextLabel.Text = newText
+        end
+    }
+end
+
+return SmoothUI
